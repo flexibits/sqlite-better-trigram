@@ -109,10 +109,110 @@ static inline int isCJK(int iCode) {
   return 0;
 }
 
-/* Function to optionally fold case and remove diacritics */
+/*
+** Fold punctuation variants that users expect to be interchangeable when
+** searching onto a single ASCII representative. Because only U+0020 is a word
+** separator, punctuation is an ordinary trigram character, so without this
+** "Sally's" and "Sally’s" produce disjoint trigrams and never match each
+** other. FTS5 runs the tokenizer over both the indexed text and the MATCH
+** query, so folding here keeps the two sides in agreement.
+**
+** Folding the whitespace family onto U+0020 also turns tabs, newlines and
+** no-break spaces into word separators.
+**
+** Keep this in sync with FBSearchCanonicalCharacter() in the Fantastical repo
+** (NSString+FantasticalCore.h), which post-filters the rows we match here.
+*/
+static inline int canonicalPunctuation(int iCode) {
+  switch (iCode) {
+  /* Apostrophe family */
+  case 0x0060: /* GRAVE ACCENT */
+  case 0x00B4: /* ACUTE ACCENT */
+  case 0x02B9: /* MODIFIER LETTER PRIME */
+  case 0x02BB: /* MODIFIER LETTER TURNED COMMA */
+  case 0x02BC: /* MODIFIER LETTER APOSTROPHE */
+  case 0x02C8: /* MODIFIER LETTER VERTICAL LINE */
+  case 0x05F3: /* HEBREW PUNCTUATION GERESH */
+  case 0x2018: /* LEFT SINGLE QUOTATION MARK */
+  case 0x2019: /* RIGHT SINGLE QUOTATION MARK */
+  case 0x201A: /* SINGLE LOW-9 QUOTATION MARK */
+  case 0x201B: /* SINGLE HIGH-REVERSED-9 QUOTATION MARK */
+  case 0x2032: /* PRIME */
+  case 0x2035: /* REVERSED PRIME */
+  case 0xFF07: /* FULLWIDTH APOSTROPHE */
+    return '\'';
+
+  /* Double quote family */
+  case 0x00AB: /* LEFT-POINTING DOUBLE ANGLE QUOTATION MARK */
+  case 0x00BB: /* RIGHT-POINTING DOUBLE ANGLE QUOTATION MARK */
+  case 0x02BA: /* MODIFIER LETTER DOUBLE PRIME */
+  case 0x02DD: /* DOUBLE ACUTE ACCENT */
+  case 0x05F4: /* HEBREW PUNCTUATION GERSHAYIM */
+  case 0x201C: /* LEFT DOUBLE QUOTATION MARK */
+  case 0x201D: /* RIGHT DOUBLE QUOTATION MARK */
+  case 0x201E: /* DOUBLE LOW-9 QUOTATION MARK */
+  case 0x201F: /* DOUBLE HIGH-REVERSED-9 QUOTATION MARK */
+  case 0x2033: /* DOUBLE PRIME */
+  case 0x2036: /* REVERSED DOUBLE PRIME */
+  case 0x2039: /* SINGLE LEFT-POINTING ANGLE QUOTATION MARK */
+  case 0x203A: /* SINGLE RIGHT-POINTING ANGLE QUOTATION MARK */
+  case 0x301D: /* REVERSED DOUBLE PRIME QUOTATION MARK */
+  case 0x301E: /* DOUBLE PRIME QUOTATION MARK */
+  case 0x301F: /* LOW DOUBLE PRIME QUOTATION MARK */
+  case 0xFF02: /* FULLWIDTH QUOTATION MARK */
+    return '"';
+
+  /* Hyphen family */
+  case 0x2010: /* HYPHEN */
+  case 0x2011: /* NON-BREAKING HYPHEN */
+  case 0x2012: /* FIGURE DASH */
+  case 0x2013: /* EN DASH */
+  case 0x2014: /* EM DASH */
+  case 0x2015: /* HORIZONTAL BAR */
+  case 0x2043: /* HYPHEN BULLET */
+  case 0x2212: /* MINUS SIGN */
+  case 0xFE58: /* SMALL EM DASH */
+  case 0xFE63: /* SMALL HYPHEN-MINUS */
+  case 0xFF0D: /* FULLWIDTH HYPHEN-MINUS */
+    return '-';
+
+  /* Whitespace family */
+  case 0x0009: /* CHARACTER TABULATION */
+  case 0x000A: /* LINE FEED */
+  case 0x000B: /* LINE TABULATION */
+  case 0x000C: /* FORM FEED */
+  case 0x000D: /* CARRIAGE RETURN */
+  case 0x0085: /* NEXT LINE */
+  case 0x00A0: /* NO-BREAK SPACE */
+  case 0x1680: /* OGHAM SPACE MARK */
+  case 0x2000: /* EN QUAD */
+  case 0x2001: /* EM QUAD */
+  case 0x2002: /* EN SPACE */
+  case 0x2003: /* EM SPACE */
+  case 0x2004: /* THREE-PER-EM SPACE */
+  case 0x2005: /* FOUR-PER-EM SPACE */
+  case 0x2006: /* SIX-PER-EM SPACE */
+  case 0x2007: /* FIGURE SPACE */
+  case 0x2008: /* PUNCTUATION SPACE */
+  case 0x2009: /* THIN SPACE */
+  case 0x200A: /* HAIR SPACE */
+  case 0x2028: /* LINE SEPARATOR */
+  case 0x2029: /* PARAGRAPH SEPARATOR */
+  case 0x202F: /* NARROW NO-BREAK SPACE */
+  case 0x205F: /* MEDIUM MATHEMATICAL SPACE */
+  case 0x3000: /* IDEOGRAPHIC SPACE */
+    return ' ';
+  }
+
+  return iCode;
+}
+
+/* Function to canonicalize punctuation, optionally fold case and remove
+** diacritics */
 static inline int customFold(int iCode, int foldCase, int removeDiacritics) {
   if (iCode == 0)
     return iCode;
+  iCode = canonicalPunctuation(iCode);
   if (foldCase)
     return sqlite3Fts5UnicodeFold(iCode, removeDiacritics);
   return iCode;
