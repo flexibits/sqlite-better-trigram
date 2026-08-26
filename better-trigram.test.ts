@@ -896,6 +896,67 @@ describe("cjk", () => {
   );
 });
 
+describe("punctuation", () => {
+  const db = initDatabase();
+  afterAll(() => db.close());
+
+  test("1.0", () => {
+    [
+      `CREATE VIRTUAL TABLE t1 USING fts5(y, tokenize='better_trigram remove_diacritics 1');`,
+      `INSERT INTO t1 VALUES('Sally\u2019s Event');`,
+      `INSERT INTO t1 VALUES('\u201CQuotes\u201D');`,
+      `INSERT INTO t1 VALUES('Q1\u2014Q2 Review');`,
+      `INSERT INTO t1 VALUES('Team\u00A0Meeting');`,
+      `INSERT INTO t1 VALUES('Notes\nOn Separate Lines');`,
+    ].forEach((stmt) => db.query(stmt).run());
+  });
+
+  // Every punctuation family folds onto its ASCII representative, so the
+  // curly/straight forms are interchangeable in both directions.
+
+  // Apostrophe family
+  sqlTest(db, `1.1`, `SELECT y as res FROM t1('"Sally''s"*');`, [], [
+    "Sally\u2019s Event",
+  ]);
+  sqlTest(db, `1.2`, `SELECT y as res FROM t1('"Sally\u2019s"*');`, [], [
+    "Sally\u2019s Event",
+  ]);
+  sqlTest(db, `1.3`, `SELECT y as res FROM t1('"Sally\u2032s"*');`, [], [
+    "Sally\u2019s Event",
+  ]);
+
+  // Double quote family
+  sqlTest(db, `1.4`, `SELECT y as res FROM t1('"""Quotes"""');`, [], [
+    "\u201CQuotes\u201D",
+  ]);
+  sqlTest(db, `1.5`, `SELECT y as res FROM t1('"\u201CQuotes\u201D"');`, [], [
+    "\u201CQuotes\u201D",
+  ]);
+
+  // Hyphen family
+  sqlTest(db, `1.6`, `SELECT y as res FROM t1('"Q1-Q2"*');`, [], [
+    "Q1\u2014Q2 Review",
+  ]);
+  sqlTest(db, `1.7`, `SELECT y as res FROM t1('"Q1\u2014Q2"*');`, [], [
+    "Q1\u2014Q2 Review",
+  ]);
+  sqlTest(db, `1.8`, `SELECT y as res FROM t1('"Q1\u2212Q2"*');`, [], [
+    "Q1\u2014Q2 Review",
+  ]);
+
+  // Whitespace family: these fold onto U+0020, which is the word separator, so
+  // a no-break space or a newline is a word boundary like any other space.
+  sqlTest(db, `1.9`, `SELECT y as res FROM t1('"Team Meeting"');`, [], [
+    "Team\u00A0Meeting",
+  ]);
+  sqlTest(db, `1.10`, `SELECT y as res FROM t1('"Team\u00A0Meeting"');`, [], [
+    "Team\u00A0Meeting",
+  ]);
+  sqlTest(db, `1.11`, `SELECT y as res FROM t1('"Notes On"');`, [], [
+    "Notes\nOn Separate Lines",
+  ]);
+});
+
 function sqlTest(
   db: Database,
   version: string,
